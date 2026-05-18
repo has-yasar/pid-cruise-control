@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PID Cruise Control Simulation</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #050507;
+            --bg-panel: #0d0f16;
+            --border-color: rgba(255, 255, 255, 0.08);
+
+            --cyan: #00f0ff;
+            --pink: #ff0055;
+            --green: #00ff66;
+            --yellow: #ffb800;
+
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            background: linear-gradient(90deg, var(--cyan), var(--pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* LAYOUT */
+        .main-container {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+            /* Important for flex-child overflow */
+        }
+
+        .sim-container {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-width: 0;
+        }
+
+        /* SIMULATION AREA */
+        .canvas-wrapper {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 240, 255, 0.02);
+        }
+
+        canvas#simCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* DASHBOARD OVERLAY */
+        .dashboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 25px;
+            pointer-events: none;
+            background: var(--bg-panel);
+            padding: 15px 25px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        .speedometer-container {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+
+        canvas#speedoCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .pedal-bars {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 15px;
+            width: 140px;
+        }
+
+        .bar-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .bar-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+
+        .bar-val {
+            font-family: var(--font-mono);
+            color: var(--text-main);
+        }
+
+        .bar-track {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.1s linear;
+        }
+
+        .bar-fill.throttle {
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+        }
+
+        .bar-fill.brake {
+            background: var(--pink);
+            box-shadow: 0 0 10px var(--pink);
+        }
+
+        /* CHARTS AREA */
+        .charts-wrapper {
+            height: 240px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .chart-box {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 15px;
+            min-width: 0;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        /* CONTROLS PANEL */
+        .controls-panel {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+            min-width: 300px;
+            max-width: 400px;
+        }
+
+        .controls-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .controls-panel::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .controls-panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-title::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--cyan);
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .control-item:last-child {
+            border-bottom: none;
+        }
+
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .control-badge {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 8px;
+            border-radius: 6px;
+            color: var(--cyan);
+            border: 1px solid rgba(0, 240, 255, 0.2);
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: var(--cyan);
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 12px var(--cyan);
+            transition: transform 0.1s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .special-slider::-webkit-slider-thumb {
+            background: var(--pink) !important;
+            box-shadow: 0 0 12px var(--pink) !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1 style="flex: 1; text-align: left;">PID Cruise Control Sim</h1>
+        <div
+            style="flex: 1; text-align: center; font-family: var(--font-sans); font-size: 0.95rem; color: var(--text-muted); font-weight: 600;">
+            Yaşar HAS Tarafından Geliştirilmiştir
+        </div>
+        <div
+            style="flex: 1; text-align: right; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">
+            Otomatik Kontrol Dersi Ödevi
+        </div>
+    </div>
+
+    <div class="main-container">
+
+        <!-- Simulation & Charts -->
+        <div class="sim-container">
+
+            <div class="canvas-wrapper">
+                <canvas id="simCanvas"></canvas>
+
+                <div class="dashboard">
+                    <div class="speedometer-container">
+                        <canvas id="speedoCanvas"></canvas>
+                    </div>
+
+                    <div class="pedal-bars">
+                        <div class="bar-group">
+                            <div class="bar-header">
+                                <span>Gaz (Throttle)</span>
+                                <span class="bar-val" id="val-throttle">0%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill throttle" id="fill-throttle"></div>
+                            </div>
+                        </div>
+
+                        <div class="bar-group">
+                            <div class="bar-header">
+                                <span>Fren (Brake)</span>
+                                <span class="bar-val" id="val-brake">0%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill brake" id="fill-brake"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-wrapper">
+                <div class="chart-box">
+                    <canvas id="speedChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <canvas id="controlChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-panel">
+
+            <div class="panel-title">Hedef Sinyal (Set Point)</div>
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">Hedef Hız (km/h)</span>
+                    <span class="control-badge" id="badge-target">0 km/h</span>
+                </div>
+                <input type="range" id="slider-target" min="0" max="220" value="0" step="1">
+            </div>
+
+            <div class="panel-title" style="margin-top: 10px;">PID Parametreleri</div>
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">Oransal Katsayı (Kp)</span>
+                    <span class="control-badge" id="badge-kp">1.00</span>
+                </div>
+                <input type="range" id="slider-kp" min="0" max="5" value="1.0" step="0.01">
+            </div>
+
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">İntegral Katsayı (Ki)</span>
+                    <span class="control-badge" id="badge-ki">0.050</span>
+                </div>
+                <input type="range" id="slider-ki" min="0" max="0.5" value="0.05" step="0.001">
+            </div>
+
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">Türev Katsayı (Kd)</span>
+                    <span class="control-badge" id="badge-kd">0.20</span>
+                </div>
+                <input type="range" id="slider-kd" min="0" max="2" value="0.2" step="0.01">
+            </div>
+
+            <div class="panel-title" style="margin-top: 10px;">Bozucu Etkiler (Disturbance)</div>
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">Yol Eğimi (Derece)</span>
+                    <span class="control-badge" id="badge-incline"
+                        style="color: var(--pink); border-color: rgba(255,0,85,0.2);">0°</span>
+                </div>
+                <input type="range" class="special-slider" id="slider-incline" min="-20" max="20" value="0" step="1">
+            </div>
+
+            <div class="control-item">
+                <div class="control-header">
+                    <span class="control-label">Araç Kütlesi (kg)</span>
+                    <span class="control-badge" id="badge-mass"
+                        style="color: var(--pink); border-color: rgba(255,0,85,0.2);">1200 kg</span>
+                </div>
+                <input type="range" class="special-slider" id="slider-mass" min="800" max="3000" value="1200" step="50">
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        /**
+         * PID Cruise Control Logic & Simulation
+         */
+
+        // State & Physics Params
+        const state = {
+            v_ms: 0,           // Speed in m/s
+            distance: 0,       // Distance travelled in m
+            throttle: 0,       // 0.0 to 1.0
+            brake: 0,          // 0.0 to 1.0
+            error_sum: 0,      // Integral term
+            last_error: 0,     // For derivative term
+            visual_angle: 0    // For smooth road inclination rendering
+        };
+
+        const params = {
+            target_kmh: 0,
+            kp: 1.0,
+            ki: 0.05,
+            kd: 0.2,
+            incline: 0,        // degrees
+            mass: 1200         // kg
+        };
+
+        const PHYSICS = {
+            MAX_ENGINE_FORCE: 8000, // N
+            MAX_BRAKE_FORCE: 15000, // N
+            DRAG_COEFF: 1.8,        // Aerodynamic drag + rolling resistance approx
+            GRAVITY: 9.81           // m/s^2
+        };
+
+        const MAX_INTEGRAL = 50; // Anti-windup
+
+        let lastTime = performance.now();
+
+        // ---------------------------------------------------------
+        // PID Update Loop
+        // ---------------------------------------------------------
+        function updatePhysics() {
+            let now = performance.now();
+            let dt = (now - lastTime) / 1000; // seconds
+            lastTime = now;
+
+            if (dt > 0.1) dt = 0.1; // clamp dt on lag
+            if (dt === 0) return;
+
+            let target_ms = params.target_kmh / 3.6;
+            let current_ms = state.v_ms;
+
+            // 1. Calculate Error
+            let error = target_ms - current_ms;
+
+            // 2. Integral Term (with Anti-Windup)
+            state.error_sum += error * dt;
+            if (state.error_sum > MAX_INTEGRAL) state.error_sum = MAX_INTEGRAL;
+            if (state.error_sum < -MAX_INTEGRAL) state.error_sum = -MAX_INTEGRAL;
+
+            // 3. Derivative Term
+            let derivative = (error - state.last_error) / dt;
+            state.last_error = error;
+
+            // 4. PID Output (Control Signal)
+            let controlSignal = (params.kp * error) + (params.ki * state.error_sum) + (params.kd * derivative);
+
+            // Map Control Signal to Throttle [0,1] or Brake [0,1]
+            if (controlSignal > 0) {
+                state.throttle = Math.min(controlSignal, 1.0);
+                state.brake = 0;
+            } else {
+                state.throttle = 0;
+                state.brake = Math.min(-controlSignal, 1.0);
+            }
+
+            // 5. Environmental Forces
+            // Engine force propels forward
+            let F_engine = state.throttle * PHYSICS.MAX_ENGINE_FORCE;
+
+            // Brake force opposes motion
+            let F_brake = -state.brake * PHYSICS.MAX_BRAKE_FORCE * Math.sign(state.v_ms);
+
+            // Aerodynamic drag opposes motion quadratically
+            let F_drag = -PHYSICS.DRAG_COEFF * state.v_ms * Math.abs(state.v_ms);
+
+            // Gravity force based on road incline
+            let incline_rad = params.incline * Math.PI / 180;
+            let F_gravity = -params.mass * PHYSICS.GRAVITY * Math.sin(incline_rad);
+
+            // Total Force
+            let F_total = F_engine + F_brake + F_drag + F_gravity;
+
+            // Handling complete stop logic to prevent jitter
+            if (state.throttle === 0 && Math.abs(state.v_ms) < 0.2 && target_ms === 0) {
+                // Determine if static friction (brakes) can hold the car against gravity
+                let F_env = F_gravity; // drag is near 0
+                let max_static_friction = state.brake * PHYSICS.MAX_BRAKE_FORCE;
+                if (Math.abs(F_env) <= max_static_friction + 100) { // +100 tolerance
+                    F_total = 0;
+                    state.v_ms = 0;
+                }
+            }
+
+            // 6. Apply Acceleration
+            let accel = F_total / params.mass;
+            state.v_ms += accel * dt;
+
+            // Prevent backwards rolling if user sets target > 0 but engine isn't strong enough
+            // For realism, cars can roll back, so we allow negative v_ms.
+
+            state.distance += state.v_ms * dt;
+
+            // Update UI Bars
+            let throttlePercent = Math.round(state.throttle * 100);
+            document.getElementById('fill-throttle').style.width = throttlePercent + '%';
+            document.getElementById('val-throttle').textContent = throttlePercent + '%';
+
+            let brakePercent = Math.round(state.brake * 100);
+            document.getElementById('fill-brake').style.width = brakePercent + '%';
+            document.getElementById('val-brake').textContent = brakePercent + '%';
+        }
+
+
+        // ---------------------------------------------------------
+        // Canvas Drawing
+        // ---------------------------------------------------------
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawCar(ctx, x, y) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Spawn Exhaust Particles
+            if (state.throttle > 0.05 && Math.random() < state.throttle * 1.5) {
+                particles.push({
+                    x: -65, y: -10 + (Math.random() * 4 - 2),
+                    vx: -Math.random() * 4 - 2,
+                    vy: (Math.random() - 0.5) * 1.5,
+                    life: 1.0,
+                    size: Math.random() * 6 + 4
+                });
+            }
+
+            // Draw Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                ctx.fillStyle = `rgba(150, 160, 180, ${p.life * 0.5})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * (2 - p.life), 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Chassis
+            ctx.fillStyle = '#171923';
+            ctx.beginPath();
+            ctx.moveTo(-60, -12); // rear bumper bottom
+            ctx.lineTo(-62, -25); // rear mid
+            ctx.lineTo(-45, -45); // rear roof
+            ctx.lineTo(10, -45);  // front roof
+            ctx.lineTo(45, -25);  // hood
+            ctx.lineTo(65, -12);  // front bumper bottom
+            ctx.closePath();
+            ctx.fill();
+
+            // Neon Chassis Outline
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#00f0ff';
+            ctx.shadowBlur = 5;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Windows
+            ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
+            ctx.beginPath();
+            ctx.moveTo(-35, -42);
+            ctx.lineTo(5, -42);
+            ctx.lineTo(30, -25);
+            ctx.lineTo(-40, -25);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Headlights
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = '#ffffff';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(63, -22, 3, 6);
+            ctx.shadowBlur = 0;
+
+            // Brake Lights
+            if (state.brake > 0.05) {
+                ctx.fillStyle = '#ff0055';
+                ctx.shadowColor = '#ff0055';
+                ctx.shadowBlur = 20;
+            } else {
+                ctx.fillStyle = '#330011';
+                ctx.shadowBlur = 0;
+            }
+            ctx.fillRect(-63, -24, 3, 8);
+            ctx.shadowBlur = 0;
+
+            // Wheels
+            let wheelRot = state.distance / 16; // radius roughly 16
+            drawWheel(ctx, -38, -12, wheelRot);
+            drawWheel(ctx, 40, -12, wheelRot);
+
+            ctx.restore();
+        }
+
+        function drawWheel(ctx, x, y, rot) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rot);
+
+            // Tire
+            ctx.fillStyle = '#0a0a0c';
+            ctx.beginPath();
+            ctx.arc(0, 0, 16, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Rim
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Hub/Spokes
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(12, 0);
+                ctx.stroke();
+                ctx.rotate(Math.PI * 2 / 5);
+            }
+            ctx.restore();
+        }
+
+        function renderSim() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let w = canvas.width;
+            let h = canvas.height;
+            let groundY = h * 0.75;
+
+            // Background Grid (Static/Parallax)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.lineWidth = 1;
+            let bgOffset = (state.distance * 5) % 100;
+            for (let x = -100; x <= w + 100; x += 100) {
+                ctx.beginPath(); ctx.moveTo(x - bgOffset, 0); ctx.lineTo(x - bgOffset, h); ctx.stroke();
+            }
+            for (let y = 0; y < h; y += 100) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+            ctx.restore();
+
+            // Camera Transformation for Incline
+            ctx.save();
+            ctx.translate(w / 2, groundY);
+
+            let target_angle = -params.incline * Math.PI / 180;
+            state.visual_angle += (target_angle - state.visual_angle) * 0.05; // smooth damping
+
+            ctx.rotate(state.visual_angle);
+
+            // Draw Ground Surface
+            ctx.fillStyle = '#090a0f';
+            ctx.fillRect(-w, 0, w * 2, h); // Ground fill mask
+
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#00f0ff';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(-w, 0);
+            ctx.lineTo(w, 0);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Road Markers (Moving)
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            let markerOffset = (state.distance * 20) % 120;
+            for (let i = -w; i < w; i += 120) {
+                ctx.fillRect(i - markerOffset, 2, 60, 4);
+            }
+
+            // Car
+            drawCar(ctx, 0, 0);
+
+            ctx.restore();
+        }
+
+        // ---------------------------------------------------------
+        // Speedometer Drawing
+        // ---------------------------------------------------------
+        const speedoCanvas = document.getElementById('speedoCanvas');
+        const speedoCtx = speedoCanvas.getContext('2d');
+
+        function drawSpeedometer() {
+            let w = speedoCanvas.width = speedoCanvas.clientWidth;
+            let h = speedoCanvas.height = speedoCanvas.clientHeight;
+
+            speedoCtx.clearRect(0, 0, w, h);
+
+            let cx = w / 2;
+            let cy = h / 2 + 10;
+            let r = 50;
+
+            // Background Arc
+            speedoCtx.beginPath();
+            speedoCtx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
+            speedoCtx.lineWidth = 8;
+            speedoCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+            speedoCtx.lineCap = 'round';
+            speedoCtx.stroke();
+
+            let currentKmh = Math.abs(state.v_ms * 3.6);
+            let maxSpeed = 240;
+            let speedFrac = Math.min(currentKmh / maxSpeed, 1.0);
+
+            // Active Arc
+            speedoCtx.beginPath();
+            speedoCtx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 0.8 + (Math.PI * 1.4) * speedFrac);
+            speedoCtx.lineWidth = 8;
+            speedoCtx.strokeStyle = '#00f0ff';
+            speedoCtx.lineCap = 'round';
+            speedoCtx.shadowColor = '#00f0ff';
+            speedoCtx.shadowBlur = 10;
+            speedoCtx.stroke();
+            speedoCtx.shadowBlur = 0;
+
+            // Text
+            speedoCtx.fillStyle = '#fff';
+            speedoCtx.font = 'bold 26px "JetBrains Mono", monospace';
+            speedoCtx.textAlign = 'center';
+            speedoCtx.textBaseline = 'middle';
+            speedoCtx.fillText(currentKmh.toFixed(0), cx, cy - 5);
+
+            speedoCtx.fillStyle = '#94a3b8';
+            speedoCtx.font = '11px "Inter", sans-serif';
+            speedoCtx.fillText('km/h', cx, cy + 18);
+        }
+
+        // ---------------------------------------------------------
+        // Charts Initialization (Chart.js)
+        // ---------------------------------------------------------
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = '"Inter", sans-serif';
+
+        let timeData = Array(50).fill('');
+        let actSpeedData = Array(50).fill(0);
+        let tgtSpeedData = Array(50).fill(0);
+        let ctrlData = Array(50).fill(0);
+
+        const speedCtx = document.getElementById('speedChart').getContext('2d');
+        const speedChart = new Chart(speedCtx, {
+            type: 'line',
+            data: {
+                labels: timeData,
+                datasets: [
+                    {
+                        label: 'Gerçek Hız (km/h)',
+                        data: actSpeedData,
+                        borderColor: '#00f0ff',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.2
+                    },
+                    {
+                        label: 'Hedef Hız (km/h)',
+                        data: tgtSpeedData,
+                        borderColor: '#ff0055',
+                        borderWidth: 1.5,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        stepped: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { display: false },
+                    y: {
+                        beginAtZero: true,
+                        max: 240,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        border: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top', align: 'end', labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' } }
+                }
+            }
+        });
+
+        const ctrlCtx = document.getElementById('controlChart').getContext('2d');
+        const ctrlChart = new Chart(ctrlCtx, {
+            type: 'line',
+            data: {
+                labels: timeData,
+                datasets: [{
+                    label: 'Kontrol Sinyali (-Fren / +Gaz)',
+                    data: ctrlData,
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    segment: {
+                        borderColor: ctx => ctx.p0.parsed.y >= 0 ? '#00ff66' : '#ff0055',
+                        backgroundColor: ctx => ctx.p0.parsed.y >= 0 ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 0, 85, 0.15)'
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { display: false },
+                    y: {
+                        min: -1, max: 1,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        border: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top', align: 'end', labels: { boxWidth: 12 } }
+                }
+            }
+        });
+
+        let lastChartUpdate = 0;
+        function updateCharts() {
+            let now = performance.now();
+            if (now - lastChartUpdate > 100) { // Update charts at 10Hz
+                lastChartUpdate = now;
+
+                actSpeedData.push(state.v_ms * 3.6);
+                actSpeedData.shift();
+
+                tgtSpeedData.push(params.target_kmh);
+                tgtSpeedData.shift();
+
+                // Control signal logging
+                let signal = state.throttle > 0 ? state.throttle : -state.brake;
+                ctrlData.push(signal);
+                ctrlData.shift();
+
+                speedChart.update();
+                ctrlChart.update();
+            }
+        }
+
+        // ---------------------------------------------------------
+        // Event Listeners for UI Controls
+        // ---------------------------------------------------------
+        function bindSliders() {
+            const bindings = [
+                { id: 'target', param: 'target_kmh', suffix: ' km/h', parse: parseFloat },
+                { id: 'kp', param: 'kp', suffix: '', parse: v => parseFloat(v).toFixed(2) },
+                { id: 'ki', param: 'ki', suffix: '', parse: v => parseFloat(v).toFixed(3) },
+                { id: 'kd', param: 'kd', suffix: '', parse: v => parseFloat(v).toFixed(2) },
+                { id: 'incline', param: 'incline', suffix: '°', parse: parseInt },
+                { id: 'mass', param: 'mass', suffix: ' kg', parse: parseInt }
+            ];
+
+            bindings.forEach(b => {
+                let slider = document.getElementById(`slider-${b.id}`);
+                let badge = document.getElementById(`badge-${b.id}`);
+                slider.addEventListener('input', (e) => {
+                    let val = parseFloat(e.target.value);
+                    params[b.param] = val;
+                    badge.innerText = b.parse(val) + b.suffix;
+                });
+            });
+        }
+
+        // ---------------------------------------------------------
+        // Main Loop
+        // ---------------------------------------------------------
+        function loop() {
+            updatePhysics();
+            renderSim();
+            drawSpeedometer();
+            updateCharts();
+            requestAnimationFrame(loop);
+        }
+
+        // Init
+        bindSliders();
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+
+</html>
